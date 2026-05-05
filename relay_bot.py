@@ -81,16 +81,24 @@ relay = BotRelay()
 async def main():
     client = TelegramClient(StringSession(SESSION_STRING), API_ID, API_HASH)
     
-    print("🚀 Connecting to account...")
-    await client.connect()
-    
-    if not await client.is_user_authorized():
-        print("❌ Session invalid! App এ গিয়ে নতুন করে লিঙ্ক করুন।")
-        return
+    print("🚀 Connecting to Telegram...")
+    try:
+        # start() method handles connect and authorization check more reliably
+        await client.start() 
+        print("🔍 Checking session...")
+        
+        if not await client.is_user_authorized():
+            print("❌ Session invalid! App এ গিয়ে নতুন করে লিঙ্ক করুন এবং নতুন সেশন কপি করুন।")
+            return
 
-    me = await client.get_me()
-    print(f"✅ Logged in as: {me.first_name}")
-    print(f"📡 Listening to SOURCE: {SOURCE_CHANNEL_ID}")
+        me = await client.get_me()
+        print(f"✅ Logged in as: {me.first_name} (@{me.username or 'No Username'})")
+        print(f"📡 Listening to SOURCE: {SOURCE_CHANNEL_ID}")
+        print(f"🎯 Target Group: {TARGET_GROUPS}")
+        print(f"🧵 Topic ID: {TARGET_TOPIC_ID}")
+    except Exception as e:
+        print(f"❌ Connection Error: {e}")
+        return
 
     @client.on(events.NewMessage(chats=SOURCE_CHANNEL_ID))
     async def handler(event):

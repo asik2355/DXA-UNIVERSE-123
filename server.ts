@@ -540,7 +540,8 @@ if (fs.existsSync(sessionFile)) {
   const savedSession = fs.readFileSync(sessionFile, "utf-8");
   if (savedSession) {
     console.log("Found existing session. Connecting...");
-    startUserClient(savedSession);
+    // startUserClient(savedSession);
+    console.log("Relay logic is currently DISABLED as per user request to test local script.");
   }
 }
 
