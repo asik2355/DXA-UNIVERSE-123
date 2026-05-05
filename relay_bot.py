@@ -17,6 +17,7 @@ SOURCE_CHANNEL_ID = -1003787486402
 
 # যে গ্রুপগুলোতে পাঠাবে (Target)
 TARGET_GROUPS = [-1003949536377]
+TARGET_TOPIC_ID = 844  # আপনার মেসেজ থ্রেড আইডি
 
 # ----------------------
 
@@ -25,13 +26,14 @@ class BotRelay:
         self.client = httpx.AsyncClient(timeout=30.0)
         self.base_url = f"https://api.telegram.org/bot{BOT_TOKEN}"
 
-    async def send_message(self, chat_id, text, reply_markup=None, retry_count=0):
+    async def send_message(self, chat_id, text, reply_markup=None, topic_id=None, retry_count=0):
         url = f"{self.base_url}/sendMessage"
         payload = {
             "chat_id": chat_id,
             "text": text,
             "parse_mode": "HTML",
-            "reply_markup": reply_markup
+            "reply_markup": reply_markup,
+            "message_thread_id": topic_id
         }
         
         try:
@@ -46,13 +48,33 @@ class BotRelay:
                 retry_after = (data.get("parameters", {}).get("retry_after", 15) + 2)
                 print(f"⚠️ Rate limited. Waiting {retry_after}s before retrying...")
                 await asyncio.sleep(retry_after)
-                return await self.send_message(chat_id, text, reply_markup, retry_count + 1)
+                return await self.send_message(chat_id, text, reply_markup, topic_id, retry_count + 1)
             
             print(f"❌ Telegram Error: {data.get('description')}")
             return None
         except Exception as e:
             print(f"❌ Request Error: {e}")
             return None
+
+    async def forward_message(self, chat_id, from_chat_id, message_id, topic_id=None, retry_count=0):
+        # অ্যাপের মতো সরাসরি মেসেজ ফরওয়ার্ড করতে copyMessage ব্যবহার করা হয়
+        url = f"{self.base_url}/copyMessage"
+        payload = {
+            "chat_id": chat_id,
+            "from_chat_id": from_chat_id,
+            "message_id": message_id,
+            "message_thread_id": topic_id
+        }
+        try:
+            res = await self.client.post(url, json=payload)
+            data = res.json()
+            if data.get("ok"): return data
+            if data.get("error_code") == 429 and retry_count < 5:
+                retry_after = (data.get("parameters", {}).get("retry_after", 15) + 2)
+                await asyncio.sleep(retry_after)
+                return await self.forward_message(chat_id, from_chat_id, message_id, topic_id, retry_count + 1)
+            return None
+        except: return None
 
 relay = BotRelay()
 
@@ -93,33 +115,36 @@ async def main():
         
         is_range_report = bool(country_match or range_match)
         
-        if is_range_report:
-            reply_markup = {"inline_keyboard": []}
+        for gid in TARGET_GROUPS:
+            if is_range_report:
+                reply_markup = {"inline_keyboard": []}
+                
+                # Button 1: COPY CODE
+                if copy_code:
+                    reply_markup["inline_keyboard"].append([
+                        {"text": f"❐ 📋 COPY: {copy_code}", "callback_data": f"copy_range:{copy_code}", "style": "primary"}
+                    ])
+                    
+                # Button 2: RANGE
+                if range_val and range_val != copy_code:
+                    reply_markup["inline_keyboard"].append([
+                        {"text": f"❐ 📱 RANGE: {range_val}", "callback_data": f"copy_range:{range_val}", "style": "primary"}
+                    ])
+                    
+                # Button 3: SERVICE
+                if service and service != ":" and len(service) > 1:
+                    reply_markup["inline_keyboard"].append([
+                        {"text": f"🔹 {service.upper()}", "callback_data": f"info_service:{service.upper()}", "style": "success"}
+                    ])
+                    
+                body = f"🌍 <b>Country:</b> {country}"
+                print(f"📤 Relaying Report to {gid}...")
+                await relay.send_message(gid, body, reply_markup, topic_id=TARGET_TOPIC_ID)
+            else:
+                print(f"🔄 Forwarding Message to {gid}...")
+                await relay.forward_message(gid, SOURCE_CHANNEL_ID, event.message.id, topic_id=TARGET_TOPIC_ID)
             
-            # Button 1: COPY CODE
-            if copy_code:
-                reply_markup["inline_keyboard"].append([
-                    {"text": f"❐ 📋 COPY: {copy_code}", "callback_data": f"copy_range:{copy_code}", "style": "primary"}
-                ])
-                
-            # Button 2: RANGE
-            if range_val and range_val != copy_code:
-                reply_markup["inline_keyboard"].append([
-                    {"text": f"❐ 📱 RANGE: {range_val}", "callback_data": f"copy_range:{range_val}", "style": "primary"}
-                ])
-                
-            # Button 3: SERVICE
-            if service and service != ":" and len(service) > 1:
-                reply_markup["inline_keyboard"].append([
-                    {"text": f"🔹 {service.upper()}", "callback_data": f"info_service:{service.upper()}", "style": "success"}
-                ])
-                
-            body = f"🌍 <b>Country:</b> {country}"
-            
-            for gid in TARGET_GROUPS:
-                print(f"📤 Relaying to {gid}...")
-                await relay.send_message(gid, body, reply_markup)
-                await asyncio.sleep(0.350) # Matching server.ts success delay
+            await asyncio.sleep(0.350) # Matching server.ts success delay
 
     print("🤖 Bot is active. Press Ctrl+C to stop.")
     await client.run_until_disconnected()
