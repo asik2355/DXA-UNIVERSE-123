@@ -1,0 +1,6 @@
+{
+  "name": "Telegram Message Forwarder",
+  "description": "Automatically forward all messages from a Telegram bot to a specific group chat.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
